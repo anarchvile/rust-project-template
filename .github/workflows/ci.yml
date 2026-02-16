@@ -136,52 +136,60 @@ jobs:
           header: code-coverage
           path: target/codecov/markdown.md
 
-      - name: Extract version
-        id: version
+      - name: Update badge gist
         if: github.ref == 'refs/heads/main'
-        run: |
-          VERSION=$(grep -oP '^\s*version\s*=\s*"\K[^"]+' Cargo.toml | head -1)
-          echo "value=$VERSION" >> "$GITHUB_OUTPUT"
-
-      - name: Extract coverage
-        id: coverage
-        if: github.ref == 'refs/heads/main'
+        env:
+          GIST_TOKEN: ${{ secrets.GIST_TOKEN }}
+          GIST_ID: ${{ vars.BADGE_GIST_ID }}
         run: |
           python - <<'PY'
-          import os, xml.etree.ElementTree as ET
+          import json, os, re, pathlib, urllib.request, xml.etree.ElementTree as ET
+
+          version_match = re.search(
+              r'^\s*version\s*=\s*"([^"]+)"',
+              pathlib.Path("Cargo.toml").read_text(),
+              re.M,
+          )
+          version = version_match.group(1) if version_match else "unknown"
+
           cobertura = ET.parse("target/codecov/cobertura.xml").getroot()
           percent = round(float(cobertura.attrib.get("line-rate", "0")) * 100, 1)
-          if percent >= 90:   color = "brightgreen"
-          elif percent >= 80: color = "green"
-          elif percent >= 70: color = "yellow"
-          elif percent >= 60: color = "orange"
-          else:               color = "red"
-          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
-              f.write(f"value={percent}%\n")
-              f.write(f"color={color}\n")
+          if percent >= 90:   cov_color = "brightgreen"
+          elif percent >= 80: cov_color = "green"
+          elif percent >= 70: cov_color = "yellow"
+          elif percent >= 60: cov_color = "orange"
+          else:               cov_color = "red"
+
+          def badge_json(label, message, color):
+              return json.dumps({
+                  "schemaVersion": 1,
+                  "label": label,
+                  "message": message,
+                  "color": color,
+              })
+
+          payload = json.dumps({
+              "files": {
+                  "version-badge.json": {"content": badge_json("version", version, "blue")},
+                  "coverage-badge.json": {"content": badge_json("coverage", f"{percent}%", cov_color)},
+              }
+          }).encode()
+
+          gist_id = os.environ["GIST_ID"]
+          token = os.environ["GIST_TOKEN"]
+          req = urllib.request.Request(
+              f"https://api.github.com/gists/{gist_id}",
+              data=payload,
+              method="PATCH",
+              headers={
+                  "Authorization": f"token {token}",
+                  "Accept": "application/vnd.github+json",
+                  "Content-Type": "application/json",
+              },
+          )
+          with urllib.request.urlopen(req) as resp:
+              print(f"Gist updated: {resp.status}")
           PY
-
-      - name: Update version badge
-        if: github.ref == 'refs/heads/main'
-        uses: schneegans/dynamic-badges-action@v1.7.0
-        with:
-          auth: ${{ secrets.GIST_TOKEN }}
-          gistID: ${{ vars.BADGE_GIST_ID }}
-          filename: version-badge.json
-          label: version
-          message: ${{ steps.version.outputs.value }}
-          color: blue
-
-      - name: Update coverage badge
-        if: github.ref == 'refs/heads/main'
-        uses: schneegans/dynamic-badges-action@v1.7.0
-        with:
-          auth: ${{ secrets.GIST_TOKEN }}
-          gistID: ${{ vars.BADGE_GIST_ID }}
-          filename: coverage-badge.json
-          label: coverage
-          message: ${{ steps.coverage.outputs.value }}
-          color: ${{ steps.coverage.outputs.color }}
 
       - name: Upload coverage report
         uses: actions/upload-artifact@v4
@@ -213,6 +221,9 @@ jobs:
     name: Benchmarks
     needs: format_lint_check
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
     steps:
       - uses: actions/checkout@v4
 
