@@ -43,6 +43,17 @@ cargo run
 
 ## Code structure
 
+### Modules
+
+Modules are structured as follows:
+
+```text
+foo.rs
+foo/tests.rs
+```
+
+This leads to a flatter code coverage report.
+
 ### Tests
 
 Strongly prefer a separate tests file. Yes:
@@ -65,14 +76,3 @@ This is required for code coverage to be able to ignore test code, but also spee
 
 Non-integration tests should be in `crates/*/src/**/tests.rs` (or sub-modules of `tests.rs` if necessary to split them
 up into more readable chunks).
-
-### Modules
-
-Modules are structured as follows:
-
-```text
-foo.rs
-foo/tests.rs
-```
-
-This leads to a flatter code coverage report.
