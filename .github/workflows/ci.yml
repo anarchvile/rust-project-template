@@ -1,0 +1,266 @@
+name: Rust Project Template CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+permissions:
+  contents: write
+  deployments: write
+  pull-requests: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  version_check:
+    name: Version Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+            fetch-depth: 0
+
+      - name: Check workspace version is bumped
+        run: |
+          PR_VERSION=$(grep -oP '^\s*version\s*=\s*"\K[^"]+' Cargo.toml | head -1)
+          BASE_VERSION=$(git show origin/${{ github.base_ref }}:Cargo.toml | grep -oP '^\s*version\s*=\s*"\K[^"]+' | head -1)
+          echo "PR version: $PR_VERSION"
+          echo "Base version: $BASE_VERSION"
+          if [ "$PR_VERSION" = "$BASE_VERSION" ]; then
+            echo "::error::Workspace version ($PR_VERSION) must be bumped from base branch version ($BASE_VERSION)"
+            exit 1
+          fi
+          # Verify the version actually increased (simple semver comparison).
+          if ! printf '%s\n%s\n' "$BASE_VERSION" "$PR_VERSION" | sort -V -C; then
+            echo "::error::PR version ($PR_VERSION) must be greater than base version ($BASE_VERSION)"
+            exit 1
+          fi
+          echo "Version bump verified"
+
+      - name: Check all crates use workspace version
+        run: |
+          failed=0
+          for manifest in crates/*/Cargo.toml; do
+            if ! grep -qE '^\s*version\.workspace\s*=\s*true' "$manifest"; then
+              echo "::error file=$manifest::Missing 'version.workspace = true' in $manifest"
+              failed=1
+            else
+              echo "$manifest uses workspace version"
+            fi
+          done
+          if [ "$failed" -eq 1 ]; then
+            exit 1
+          fi
+          echo "All crates use the workspace version"
+
+  format_lint_check:
+    name: Format, Lint, and Check
+    needs: version_check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          components: rustfmt, clippy
+
+      - name: Format
+        run: cargo fmt --all -- --config wrap_comments=true,comment_width=120 --check
+
+      - name: Lint
+        run: cargo clippy --workspace --all-targets --all-features -- -W clippy::pedantic
+
+      - name: Check
+        run: cargo check --workspace --all-targets --all-features
+
+  test_with_code_coverage:
+    name: Test with Code Coverage
+    needs: format_lint_check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          components: llvm-tools-preview
+
+      - name: Install grcov
+        run: cargo install grcov
+
+      - name: Install nextest
+        uses: taiki-e/install-action@nextest
+
+      # Run doc tests separately (not counted towards coverage, as grcov cannot process these yet).
+      # See: https://github.com/nextest-rs/nextest/issues/16
+      - name: Run doc tests
+        run: cargo test --workspace --locked --no-fail-fast --doc -- --nocapture
+
+      # Avoid stale binary data, which could confuse coverage.
+      - name: Clean binary artifacts
+        run: cargo clean
+
+      - name: Run tests with coverage instrumentation
+        env:
+          CARGO_INCREMENTAL: 0
+          RUSTFLAGS: -C instrument-coverage=all
+          LLVM_PROFILE_FILE: cargo-test-%p-%m.profraw
+        run: cargo nextest run --workspace --locked --all-targets
+
+      - name: Generate coverage report
+        run: |
+          mkdir -p target/codecov
+          grcov . \
+            --source-dir . \
+            --binary-path target/debug/deps/ \
+            --output-path target/codecov/ \
+            --output-types html,cobertura,markdown \
+            --llvm \
+            --branch \
+            --keep-only 'crates/*/src/*' \
+            --ignore '**/{errors.rs,tests.rs,tests/**/*.rs}' \
+            --excl-line '(unreachable!\(|cov-exclude)' \
+            --excl-start 'start-cov-exclude' \
+            --excl-stop 'end-cov-exclude'
+
+      - name: Display coverage summary
+        run: cat target/codecov/markdown.md
+
+      - name: Post coverage comment
+        if: github.event_name == 'pull_request'
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: code-coverage
+          path: target/codecov/markdown.md
+
+      # Note: If making any changes here, make sure to double-check whether the README.md also needs to be modified
+      # (and vice-versa).
+      #
+      # We use a quick-and-dirty post-merge job step to update the version and code coverage badges, so we don't need
+      # to fiddle around with trying to integrate third-party badges.
+      - name: Update README badges
+        if: github.ref == 'refs/heads/main'
+        run: |
+          python - <<'PY'
+          import pathlib
+          import re
+          import xml.etree.ElementTree as ET
+          from urllib.parse import quote
+
+          version_match = re.search(
+              r'^\s*version\s*=\s*"([^"]+)"',
+              pathlib.Path("Cargo.toml").read_text(),
+              re.M,
+          )
+          version = version_match.group(1) if version_match else "unknown"
+
+          cobertura = ET.parse("target/codecov/cobertura.xml").getroot()
+          line_rate = float(cobertura.attrib.get("line-rate", "0"))
+          percent = round(line_rate * 100, 1)
+
+          def coverage_color(value):
+              if value >= 90:
+                  return "brightgreen"
+              if value >= 80:
+                  return "green"
+              if value >= 70:
+                  return "yellow"
+              if value >= 60:
+                  return "orange"
+              return "red"
+
+          readme_path = pathlib.Path("README.md")
+          readme_lines = readme_path.read_text().splitlines()
+          version_badge = (
+              f"[![Version](https://img.shields.io/badge/version-"
+              f"{quote(version)}-blue)](Cargo.toml) <!-- badge:version -->"
+          )
+          coverage_badge = (
+              f"[![Coverage](https://img.shields.io/badge/coverage-"
+              f"{quote(f'{percent}%')}-{coverage_color(percent)})]"
+              "(https://https://github.com/anarchvile/rust-project-template/actions/workflows/ci.yml) "
+              "<!-- badge:coverage -->"
+          )
+
+          updated_lines = []
+          for line in readme_lines:
+              if "<!-- badge:version -->" in line:
+                  updated_lines.append(version_badge)
+              elif "<!-- badge:coverage -->" in line:
+                  updated_lines.append(coverage_badge)
+              else:
+                  updated_lines.append(line)
+
+          readme_path.write_text("\n".join(updated_lines) + "\n")
+          PY
+
+      - name: Commit badge updates
+        if: github.ref == 'refs/heads/main'
+        uses: EndBug/add-and-commit@v9
+        with:
+          add: README.md
+          message: "chore: update badges"
+          default_author: github_actions
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: |
+            target/codecov/html/
+            target/codecov/cobertura.xml
+            target/codecov/markdown.md
+
+  readme_cli_smoke:
+    name: README CLI Smoke Test
+    needs: format_lint_check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+
+      # Note: If making any changes here, make sure to double-check whether the README.md also needs to be modified
+      # (and vice-versa).
+      - name: Run README CLI examples
+        run: |
+          cargo run
+          cargo build && ./target/debug/template
+
+  benchmark:
+    name: Benchmarks
+    needs: format_lint_check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+
+      - name: Run benchmarks
+        run: cargo bench --workspace -- --output-format bencher 2>&1 | tee benchmark_output.txt
+
+      - name: Download previous benchmark data
+        uses: actions/cache@v4
+        with:
+          path: ./.cache
+          key: ${{ runner.os }}-benchmark-${{ github.ref_name }}-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-benchmark-main-
+            ${{ runner.os }}-benchmark-
+
+      - name: Store benchmark result
+        uses: benchmark-action/github-action-benchmark@v1
+        with:
+          tool: 'cargo'
+          output-file-path: benchmark_output.txt
+          external-data-json-path: ./.cache/benchmark-data.json
+          comment-always: true
+          alert-threshold: '130%' # This is a ratio value, e.g., if the old benchmark ran in 1 second and the new one ran in 1.4 seconds, this would trigger a regression.
+          fail-on-alert: true
+          github-token: ${{ secrets.GITHUB_TOKEN }}

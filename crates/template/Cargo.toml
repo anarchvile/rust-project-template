@@ -1,0 +1,30 @@
+[package]
+name = "template"
+description = "A simple package with a library and binary crate."
+
+version.workspace = true
+rust-version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "template"
+# Benchmarks need to be "disabled" here in order to work around issues related to argument parsing when using Criterion
+# and `cargo bench`. See https://bheisler.github.io/criterion.rs/book/faq.html#cargo-bench-gives-unrecognized-option-errors-for-valid-command-line-options
+bench = false
+
+[lib]
+# Benchmarks need to be "disabled" here in order to work around issues related to argument parsing when using Criterion
+# and `cargo bench`. See https://bheisler.github.io/criterion.rs/book/faq.html#cargo-bench-gives-unrecognized-option-errors-for-valid-command-line-options
+bench = false
+
+[dev-dependencies]
+criterion = { workspace = true, default-features = false, features = [
+    "cargo_bench_support",
+    "html_reports",
+] }
+
+[[bench]]
+name = "bench"
+harness = false
