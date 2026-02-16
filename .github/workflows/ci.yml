@@ -230,7 +230,7 @@ jobs:
       - name: Run README CLI examples
         run: |
           cargo run
-          cargo build && ./target/debug/bin
+          cargo build && ./target/debug/template
 
   benchmark:
     name: Benchmarks
