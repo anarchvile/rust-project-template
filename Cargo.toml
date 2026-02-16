@@ -1,0 +1,13 @@
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+
+[workspace.package]
+version = "1.0.0"
+rust-version = "1.93"
+edition = "2024"
+authors = ["anarchvile <lushe.shipkov@gmail.com>"]
+license = "MIT"
+
+[workspace.dependencies]
+criterion = { version = "0.8", default-features = false }

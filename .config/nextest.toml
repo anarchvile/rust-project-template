@@ -1,0 +1,8 @@
+[profile.mr]
+retries = 0
+
+failure-output = "immediate-final"
+fail-fast = false
+
+[profile.mr.junit]
+path = "junit.xml"
