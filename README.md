@@ -1,6 +1,6 @@
-[![Version](https://img.shields.io/badge/version-1.0.2-blue)](Cargo.toml) <!-- badge:version -->
+[![Version](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/anarchvile/e3a19035ee560dd1a1049a0031bd0128/raw/version-badge.json)](Cargo.toml)
 [![CI](https://github.com/anarchvile/rust-project-template/actions/workflows/ci.yml/badge.svg)](https://github.com/anarchvile/rust-project-template/actions/workflows/ci.yml)
-[![Coverage](https://img.shields.io/badge/coverage-84.3%25-green)](https://github.com/anarchvile/rust-project-template/actions/workflows/ci.yml) <!-- badge:coverage -->
+[![Coverage](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/anarchvile/e3a19035ee560dd1a1049a0031bd0128/raw/coverage-badge.json)](https://github.com/anarchvile/rust-project-template/actions/workflows/ci.yml)
 
 # Rust Project Template
 
