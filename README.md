@@ -20,6 +20,11 @@ The following tools are recommended for building and running this project:
 - [`cargo-nextest`](https://nexte.st/docs/installation/from-source/)
   * `cargo install --locked cargo-nextest`
 
+In addition to the above, make sure to set up the following secrets to ensure that CI works out-of-the-gate:
+
+- `GITHUB_TOKEN` (for storing benchmark results over time).
+- `GIST_TOKEN` (for updating badges in the `README`).
+
 ## Commands
 
 ```bash
