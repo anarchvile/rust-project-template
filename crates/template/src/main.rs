@@ -16,7 +16,7 @@ fn main() {
 
 /// Break the typical testing pattern outlined in the `README.md` because this is a
 /// binary crate.
-#[cfg(test)] 
+#[cfg(test)]
 mod tests {
     #[test]
     fn hard_coded_add() {
