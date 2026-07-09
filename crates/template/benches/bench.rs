@@ -7,7 +7,11 @@ use criterion::criterion_main;
 /// Benchmark addition.
 fn bench_add(c: &mut Criterion) {
     c.bench_function("add", |b| {
-        b.iter(|| template::add(std::hint::black_box(2), std::hint::black_box(3)));
+        b.iter(|| {
+            // Extra sleep to generate non-zero benchmark data.
+            std::thread::sleep(std::time::Duration::from_secs(1));
+            template::add(std::hint::black_box(2), std::hint::black_box(3))
+        });
     });
 }
 
