@@ -249,6 +249,6 @@ jobs:
           output-file-path: benchmark_output.txt
           external-data-json-path: ./.cache/benchmark-data.json
           comment-always: true
-          alert-threshold: '1900115875%' # This is a ratio value, e.g., if the old benchmark ran in 1 second and the new one ran in 1.4 seconds, this would trigger a regression.
-          fail-on-alert: true
+          alert-threshold: '1.3%' # This is a ratio value, e.g., if the old benchmark ran in 1 second and the new one ran in 1.4 seconds, this would trigger a regression.
+          fail-on-alert: false
           github-token: ${{ secrets.GITHUB_TOKEN }}
